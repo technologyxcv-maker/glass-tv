@@ -21,7 +21,7 @@ $pkg = 'com.gathin.tvhome'
 $dir = "/sdcard/Android/data/$pkg/files"
 
 if ($Reset) {
-    & $py -I tv.py "rm -f $dir/config.json $dir/wallpaper.jpg; am force-stop $pkg; am start -n $pkg/.MainActivity >/dev/null; echo reset"
+    & $py -I tv.py "rm -rf $dir/config.json $dir/wallpaper.jpg $dir/wallpapers; am force-stop $pkg; am start -n $pkg/.MainActivity >/dev/null; echo reset"
     exit 0
 }
 if (-not $Theme) { throw 'usage: theme.ps1 <theme folder> | -Reset' }
@@ -33,5 +33,14 @@ try { Get-Content $config -Raw | ConvertFrom-Json | Out-Null } catch { throw "$c
 & $py -I tv.py --push $config "$dir/config.json"
 $wall = Join-Path $Theme 'wallpaper.jpg'
 if (Test-Path $wall) { & $py -I b64push.py $wall "$dir/wallpaper.jpg" } else { & $py -I tv.py "rm -f $dir/wallpaper.jpg" | Out-Null }
+# A wallpapers/ folder is a rotation: the launcher shows one picture after another (wallpaper_minutes).
+& $py -I tv.py "rm -rf $dir/wallpapers" | Out-Null
+$walls = Join-Path $Theme 'wallpapers'
+if (Test-Path $walls -PathType Container) {
+    & $py -I tv.py "mkdir -p $dir/wallpapers" | Out-Null
+    Get-ChildItem $walls -File | Where-Object { $_.Extension -in '.jpg', '.jpeg', '.png' } | ForEach-Object {
+        & $py -I b64push.py $_.FullName "$dir/wallpapers/$($_.Name)" | Select-Object -Last 1
+    }
+}
 & $py -I tv.py "am force-stop $pkg; am start -n $pkg/.MainActivity >/dev/null; echo applied"
 Write-Host "Theme $(Split-Path $Theme -Leaf) is on the TV. Undo with: tools\theme.ps1 -TvHost $TvHost -Reset"
