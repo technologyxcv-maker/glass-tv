@@ -221,6 +221,15 @@
             </LinearLayout>
         </RelativeLayout>
 
+        <!-- Prayer times (prayer_zone in config.xml): one column per time, filled in code. -->
+        <LinearLayout
+            android:id="@+id/prayerRow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:orientation="horizontal"
+            android:visibility="gone" />
+
         <!-- The wrapper clips at the grid's edge; the grid itself must not clip so scaled tiles can overflow their cells. -->
         <com.gathin.tvhome.FadeTopFrame
             android:id="@+id/gridWrap"

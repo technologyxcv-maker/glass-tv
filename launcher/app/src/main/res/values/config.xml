@@ -51,6 +51,20 @@
     <!-- Show the Solar Hijri (Shamsi) date used in Iran and Afghanistan, e.g. "27 Mehr 1405", above the
          Gregorian date. -->
     <bool name="shamsi_date">false</bool>
+    <!-- Malaysian prayer times (JAKIM e-Solat) in a row under the clock, for this zone code, e.g. MLK01 for
+         Melaka, WLY01 for Kuala Lumpur (codes: https://www.e-solat.gov.my). Leave empty to hide the row. -->
+    <string name="prayer_zone" translatable="false">MLK01</string>
+    <!-- Names over the eight times, in e-Solat's order: imsak, fajr, syuruk, dhuha, dhuhr, asr, maghrib, isha. -->
+    <string-array name="prayer_names" translatable="false">
+        <item>IMSAK</item>
+        <item>SUBUH</item>
+        <item>SYURUK</item>
+        <item>DUHA</item>
+        <item>ZOHOR</item>
+        <item>ASAR</item>
+        <item>MAGHRIB</item>
+        <item>ISYAK</item>
+    </string-array>
     <!-- Optional VPN app the network pill opens (hold the pill for Wi-Fi settings), e.g. the package of the
          VPN you use. Empty: the pill opens Wi-Fi settings. The green VPN badge shows for any VPN either way;
          with an app set here, a red "VPN off" badge also shows while no VPN is up. -->

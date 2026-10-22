@@ -129,6 +129,11 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private TextView btnWifi;
     private TextView shamsiDate;
     private boolean shamsi;
+    /** e-Solat zone for the prayer times row (config.xml prayer_zone); empty hides the row. */
+    private String prayerZone;
+    private LinearLayout prayerRow;
+    private TextView[] prayerTimes;
+    private boolean prayerFetchRunning;
     private String vpnApp;
     private SpringAnimation springX, springY;
     private float glassTargetX, glassTargetY;
@@ -231,6 +236,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         @Override
         public void run() {
             updateShamsiDate();
+            updatePrayerRow();
             updateWifiLabel();
             refreshPlacesIfDue();
             handler.postDelayed(this, MINUTE_MS);
@@ -291,6 +297,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         });
         btnWifi = findViewById(R.id.btnWifi);
         if (!cfg.showNetworkPill) btnWifi.setVisibility(View.GONE);
+        setUpPrayerRow();
         shamsiDate = findViewById(R.id.shamsiDate);
         shamsi = cfg.shamsiDate;
         if (shamsi) {
@@ -669,6 +676,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         resuming = true;
         reloadApps(true);
         updateShamsiDate();
+        updatePrayerRow();
         updateWifiLabel();
         updateInputsButton();
         startWallpaperRotation();
@@ -1460,6 +1468,77 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private void updateShamsiDate() {
         if (shamsi) shamsiDate.setText(Shamsi.today());
+    }
+
+    /** Builds the prayer times row: a gold name over each time, as on e-solat.gov.my. */
+    private void setUpPrayerRow() {
+        prayerZone = getString(R.string.prayer_zone).trim();
+        prayerRow = findViewById(R.id.prayerRow);
+        if (prayerZone.isEmpty()) return;
+        String[] names = getResources().getStringArray(R.array.prayer_names);
+        prayerTimes = new TextView[names.length];
+        android.graphics.Typeface outfit = getResources().getFont(R.font.outfit);
+        float density = getResources().getDisplayMetrics().density;
+        for (int i = 0; i < names.length; i++) {
+            LinearLayout col = new LinearLayout(this);
+            col.setOrientation(LinearLayout.VERTICAL);
+            col.setPadding(0, 0, (int) (34 * density), 0);
+            TextView name = new TextView(this);
+            name.setText(names[i]);
+            name.setTypeface(outfit);
+            name.setFontVariationSettings("'wght' 600");
+            name.setTextSize(13f);
+            name.setLetterSpacing(0.1f);
+            name.setTextColor(0xFFF2C230);
+            name.setIncludeFontPadding(false);
+            TextView time = new TextView(this);
+            time.setTypeface(outfit);
+            time.setFontVariationSettings("'wght' 400");
+            time.setTextSize(17f);
+            time.setTextColor(0xFFFFFFFF);
+            time.setIncludeFontPadding(false);
+            time.setPadding(0, (int) (6 * density), 0, 0);
+            col.addView(name);
+            col.addView(time);
+            prayerRow.addView(col);
+            prayerTimes[i] = time;
+        }
+    }
+
+    /** Fills in today's times and marks the next one; fetches the month first when it is not cached. */
+    private void updatePrayerRow() {
+        if (prayerTimes == null) return;
+        int[] mins = PrayerTimes.today(this, prayerZone);
+        if (mins == null) {
+            prayerRow.setVisibility(View.GONE);
+            if (prayerFetchRunning || !PrayerTimes.due(this, prayerZone)) return;
+            prayerFetchRunning = true;
+            String zone = prayerZone;
+            new Thread(() -> {
+                boolean got = PrayerTimes.refresh(getApplicationContext(), zone);
+                handler.post(() -> {
+                    prayerFetchRunning = false;
+                    if (got && !isDestroyed()) updatePrayerRow();
+                });
+            }, "prayer-times").start();
+            return;
+        }
+        java.util.Calendar now = java.util.Calendar.getInstance();
+        int nowMin = now.get(java.util.Calendar.HOUR_OF_DAY) * 60 + now.get(java.util.Calendar.MINUTE);
+        boolean h24 = android.text.format.DateFormat.is24HourFormat(this);
+        int next = -1;
+        for (int i = 0; i < mins.length; i++) {
+            int h = mins[i] / 60, m = mins[i] % 60;
+            prayerTimes[i].setText(h24
+                    ? String.format(java.util.Locale.US, "%02d:%02d", h, m)
+                    : String.format(java.util.Locale.US, "%d:%02d %s", (h + 11) % 12 + 1, m, h < 12 ? "AM" : "PM"));
+            if (next < 0 && mins[i] > nowMin) next = i;
+        }
+        // The next time stays bright; the rest dim a little, so the eye finds it at once.
+        for (int i = 0; i < mins.length; i++) {
+            ((View) prayerTimes[i].getParent()).setAlpha(next < 0 || i == next ? 1f : 0.62f);
+        }
+        prayerRow.setVisibility(View.VISIBLE);
     }
 
     /** Shows the Wi-Fi network name on the button when we can read it, otherwise the connection type. */
