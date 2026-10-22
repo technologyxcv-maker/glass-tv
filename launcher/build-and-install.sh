@@ -173,10 +173,12 @@ ARMED=0
 #                         app; Google TV needs this once the stock launcher is gone (InputKeyService)
 #   HOME_KEY_SERVICE=1    remotes whose Home button sends KEYCODE_ALL_APPS instead of HOME, e.g. Xiaomi
 #                         sticks: the key is routed to the launcher (HomeKeyService)
+#   APP_KEY_SERVICE=1     the remote's app buttons open the apps in config.xml app_keys (AppKeyService)
 enable_service() {   # appends to enabled_accessibility_services without dropping other services
   svc=com.gathin.tvhome/.$1
   "$PY" -I ../tools/tv.py "s=\$(settings get secure enabled_accessibility_services); case \"\$s\" in *$1*) ;; null|'') settings put secure enabled_accessibility_services $svc ;; *) settings put secure enabled_accessibility_services \"\$s:$svc\" ;; esac; settings put secure accessibility_enabled 1; echo $1 enabled"
 }
 if [ "${INPUT_KEY_SERVICE:-0}" = 1 ]; then enable_service InputKeyService; fi
 if [ "${HOME_KEY_SERVICE:-0}" = 1 ]; then enable_service HomeKeyService; fi
+if [ "${APP_KEY_SERVICE:-0}" = 1 ]; then enable_service AppKeyService; fi
 echo "Installed. Press Home on the remote to see it."

@@ -48,6 +48,14 @@
     <integer-array name="settings_key_scancodes">
     </integer-array>
 
+    <!-- Remote app buttons pointed at other apps (APP_KEY_SERVICE=1 build-and-install.sh), as
+         KEYCODE_NAME=package. Find a button's key code in `dumpsys activity broadcasts history` after
+         pressing it (GLOBAL_BUTTON entries), or with `getevent -lt`. On the Sharp/MTC Google TV remote the
+         Prime Video button is KEYCODE_TV_INPUT_COMPONENT_2. Leave empty to omit. -->
+    <string-array name="app_keys" translatable="false">
+        <item>KEYCODE_TV_INPUT_COMPONENT_2=com.nuvio.tv</item>
+    </string-array>
+
     <!-- Show the Solar Hijri (Shamsi) date used in Iran and Afghanistan, e.g. "27 Mehr 1405", above the
          Gregorian date. -->
     <bool name="shamsi_date">false</bool>
