@@ -22,6 +22,13 @@
     <string name="home_settings_help">Choose a home screen in system settings, then press Home.</string>
     <string name="input_key_service_description">Opens the input switcher when the remote\'s Input button is pressed.</string>
     <string name="app_key_service_description">Opens the app you chose when one of the remote\'s app buttons is pressed.</string>
+    <string name="sound">Sound</string>
+    <string name="sound_off">Off</string>
+    <string name="volume">Volume</string>
+    <string name="volume_low">Low</string>
+    <string name="volume_medium">Medium</string>
+    <string name="volume_high">High</string>
+    <string name="no_sound_packs">No sound packs on this TV. Push them with tools/sounds.ps1.</string>
     <string name="home_key_name">Home button</string>
     <string name="home_key_description">Makes the remote\'s Home button open this launcher.</string>
     <string name="card_prompt_title">New card from %1$s</string>

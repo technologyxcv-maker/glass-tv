@@ -208,6 +208,18 @@
                     android:drawableStart="@drawable/ic_wifi"
                     android:nextFocusDown="@+id/grid" />
 
+                <!-- Interface sounds: the pack and the volume (see NavSounds). -->
+                <TextView
+                    android:id="@+id/btnSound"
+                    style="@style/TopMenuButton"
+                    android:layout_width="42dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="0dp"
+                    android:drawablePadding="0dp"
+                    android:contentDescription="@string/sound"
+                    android:drawableStart="@drawable/ic_sound"
+                    android:nextFocusDown="@+id/grid" />
+
                 <TextView
                     android:id="@+id/btnSettings"
                     style="@style/TopMenuButton"

@@ -134,6 +134,20 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     private LinearLayout prayerRow;
     private TextView[] prayerTimes;
     private boolean prayerFetchRunning;
+    /** Interface sounds from the pack picked on the Sound pill; silent until one is chosen. */
+    private NavSounds sounds;
+    /** When a direction key last went down, so only moves the remote made click (not focus Home restores). */
+    private long lastDpadAt;
+    /** Focus moves are silent until then: an opening or closing menu has its own sound. */
+    private long navQuietUntil;
+    /** Counts focus moves, so a direction key that moved nothing can bump. */
+    private int navMoves;
+    private final android.content.BroadcastReceiver screenOnReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(Context c, Intent intent) {
+            if (hasWindowFocus()) sound(NavSounds.ON);
+        }
+    };
     private String vpnApp;
     private SpringAnimation springX, springY;
     private float glassTargetX, glassTargetY;
@@ -298,6 +312,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnWifi = findViewById(R.id.btnWifi);
         if (!cfg.showNetworkPill) btnWifi.setVisibility(View.GONE);
         setUpPrayerRow();
+        sounds = new NavSounds(this);
+        registerReceiver(screenOnReceiver, new IntentFilter(Intent.ACTION_SCREEN_ON));
         shamsiDate = findViewById(R.id.shamsiDate);
         shamsi = cfg.shamsiDate;
         if (shamsi) {
@@ -353,7 +369,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         }
         // The grid only shows the shape on the tray.
         glider.addCompanion(grid, tray.area);
-        for (int id : new int[]{R.id.btnInputs, R.id.btnWifi, R.id.btnSettings}) {
+        for (int id : new int[]{R.id.btnInputs, R.id.btnWifi, R.id.btnSound, R.id.btnSettings}) {
             View pill = findViewById(id);
             pill.setBackground(new GlassDrawable(pill, 21 * density, density, glider));
             glider.addCompanion(pill);
@@ -434,6 +450,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             return true;
         });
         btnSettings.setOnClickListener(v -> open(systemIntent(Settings.ACTION_SETTINGS)));
+        View btnSound = findViewById(R.id.btnSound);
+        btnSound.setOnClickListener(v -> showSoundMenu());
         btnSettings.setOnLongClickListener(v -> {
             if (!moduleCards) return false;   // off: a long press does nothing, as before the feature
             showModuleCards();
@@ -462,9 +480,15 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         btnInputs.setOnKeyListener(pillKeys);
         btnWifi.setOnKeyListener(pillKeys);
         btnSettings.setOnKeyListener(pillKeys);
+        btnSound.setOnKeyListener(pillKeys);
 
         // Hide the glass when focus leaves the tiles.
         getWindow().getDecorView().getViewTreeObserver().addOnGlobalFocusChangeListener((oldF, newF) -> {
+            if (oldF != null && newF != null && oldF != newF) {
+                navMoves++;
+                long now = android.os.SystemClock.uptimeMillis();
+                if (now - lastDpadAt < 400 && now >= navQuietUntil) sound(NavSounds.NAVIGATION);
+            }
             boolean onTile = newF != null && newF.getId() == R.id.card;
             if (!onTile) hideGlass();
             if (!onTile && (newF == null || !(isTopPill(newF) || inMenu(newF)))) glider.hide();
@@ -794,6 +818,8 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        unregisterReceiver(screenOnReceiver);
+        sounds.release();
         wallDecoder.shutdownNow();
         ConnectivityManager cm = getSystemService(ConnectivityManager.class);
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
@@ -974,7 +1000,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     private boolean isTopPill(View v) {
         int id = v.getId();
-        return id == R.id.btnInputs || id == R.id.btnWifi || id == R.id.btnSettings;
+        return id == R.id.btnInputs || id == R.id.btnWifi || id == R.id.btnSound || id == R.id.btnSettings;
     }
 
     /** Sends the focus shape onto a pill: from a tile it glides up and narrows into the pill. */
@@ -1376,6 +1402,66 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        boolean moving = movingPos >= 0, menu = openMenu != null;
+        boolean handled = handleKey(event);
+        keySound(event, moving, menu);
+        return handled;
+    }
+
+    /** The interface sound for a key, once Home has acted on it. */
+    private void keySound(KeyEvent event, boolean wasMoving, boolean menuWasOpen) {
+        int code = event.getKeyCode();
+        boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
+        switch (code) {
+            case KeyEvent.KEYCODE_DPAD_LEFT:
+            case KeyEvent.KEYCODE_DPAD_RIGHT:
+            case KeyEvent.KEYCODE_DPAD_UP:
+            case KeyEvent.KEYCODE_DPAD_DOWN:
+                if (!down) return;
+                lastDpadAt = android.os.SystemClock.uptimeMillis();
+                if (wasMoving) {
+                    sound(NavSounds.NAVIGATION);
+                    return;
+                }
+                // Focus may land a moment later (the grid scrolls first), so wait before calling it a bump.
+                final int moves = navMoves;
+                handler.postDelayed(() -> {
+                    if (navMoves == moves && movingPos < 0 && hasWindowFocus()) sound(NavSounds.BUMP);
+                }, 160);
+                return;
+            case KeyEvent.KEYCODE_DPAD_CENTER:
+            case KeyEvent.KEYCODE_ENTER:
+            case KeyEvent.KEYCODE_NUMPAD_ENTER:
+                // A short press: a long one opens the app menu, which has its own sound.
+                if (down || event.isCanceled()
+                        || event.getEventTime() - event.getDownTime() >= android.view.ViewConfiguration.getLongPressTimeout()) {
+                    return;
+                }
+                // The press opened a menu, which played its open sound.
+                if (!menuWasOpen && openMenu != null) return;
+                View f = getCurrentFocus();
+                sound(!wasMoving && f != null && f.getId() == R.id.card ? NavSounds.LAUNCH : NavSounds.CONFIRM);
+                return;
+            case KeyEvent.KEYCODE_BACK:
+            case KeyEvent.KEYCODE_ESCAPE:
+                // Closing a menu plays its close sound instead.
+                if (down && event.getRepeatCount() == 0 && !menuWasOpen) sound(NavSounds.BACK);
+                return;
+            default:
+        }
+    }
+
+    private void sound(String event) {
+        if (sounds != null) sounds.play(event);
+    }
+
+    /** A menu opening or closing: its sound, with the focus move that comes with it kept quiet. */
+    private void menuSound(String event) {
+        sound(event);
+        navQuietUntil = android.os.SystemClock.uptimeMillis() + 250;
+    }
+
+    private boolean handleKey(KeyEvent event) {
         int code = event.getKeyCode();
         if (code == swallowRelease && event.getAction() == KeyEvent.ACTION_UP) {
             swallowRelease = -1;
@@ -1782,6 +1868,80 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
     }
 
     /**
+     * Menu under the Sound pill: Off and every sound pack on the TV (the chosen one ticked; resting on
+     * one plays it), then the volume, which steps Low, Medium, High in place.
+     */
+    private void showSoundMenu() {
+        if (openMenu != null) return;
+        View anchor = findViewById(R.id.btnSound);
+        List<String> packs = sounds.packs();
+        if (packs.isEmpty()) {
+            Toast.makeText(this, R.string.no_sound_packs, Toast.LENGTH_LONG).show();
+            return;
+        }
+        FrameLayout panel = (FrameLayout) getLayoutInflater().inflate(R.layout.popup_inputs, root, false);
+        LinearLayout rows = panel.findViewById(R.id.rows);
+        String chosen = sounds.pack();
+        List<String> rowPacks = new ArrayList<>();
+        rowPacks.add(null);
+        rowPacks.addAll(packs);
+        for (String pack : rowPacks) {
+            View row = soundRow(rows, R.drawable.ic_sound,
+                    pack == null ? getString(R.string.sound_off) : NavSounds.name(pack),
+                    java.util.Objects.equals(pack, chosen) ? "✓" : null);
+            row.setTag(pack == null ? "" : pack);
+            row.setOnClickListener(v -> {
+                sounds.choose(pack);
+                closeMenu(false);
+                menuAnchorFocus(anchor);
+            });
+        }
+        addSeparator(rows);
+        String[] levels = {getString(R.string.volume_low), getString(R.string.volume_medium), getString(R.string.volume_high)};
+        View volume = soundRow(rows, R.drawable.ic_sound, getString(R.string.volume), levels[sounds.volumeStep()]);
+        volume.setOnClickListener(v -> {
+            int step = (sounds.volumeStep() + 1) % NavSounds.VOLUMES.length;
+            sounds.setVolumeStep(step);
+            ((TextView) v.findViewById(R.id.status)).setText(levels[step]);
+        });
+
+        int width = (int) (230 * density);
+        panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+        width = Math.max(width, panel.getMeasuredWidth());
+        showMenu(panel, rows, anchor, width, false);
+
+        // Resting on a pack plays it; the selection still glides as in every menu.
+        for (int i = 0; i < rows.getChildCount(); i++) {
+            View row = rows.getChildAt(i);
+            if (!(row.getTag() instanceof String)) continue;
+            String pack = (String) row.getTag();
+            row.setOnFocusChangeListener((v, has) -> {
+                if (!has) return;
+                glideToMenuRow(panel, rows, v);
+                if (!pack.isEmpty()) sounds.preview(pack);
+            });
+        }
+    }
+
+    /** After a pick the selection goes back to the Sound pill, as Back would. */
+    private void menuAnchorFocus(View anchor) {
+        navQuietUntil = android.os.SystemClock.uptimeMillis() + 250;
+        anchor.requestFocus();
+    }
+
+    private View soundRow(LinearLayout rows, int iconRes, String title, String status) {
+        View row = getLayoutInflater().inflate(R.layout.item_input, rows, false);
+        ((ImageView) row.findViewById(R.id.icon)).setImageResource(iconRes);
+        ((TextView) row.findViewById(R.id.title)).setText(title);
+        row.findViewById(R.id.dot).setVisibility(View.GONE);
+        TextView s = row.findViewById(R.id.status);
+        if (status == null) s.setVisibility(View.GONE);
+        else s.setText(status);
+        rows.addView(row);
+        return row;
+    }
+
+    /**
      * Shows a glass menu in Home's own window, under {@code anchor} or, with {@code above}, over it:
      * Home's focus shape glides from the anchor to the first row, the menu's glass paints it over
      * itself, and the glass and rows fade in around it. Up from the first row (Down from the last when
@@ -1804,6 +1964,7 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
             lp.topMargin = menuAt[1] - menuGliderAt[1] + anchor.getHeight() + gap;
         }
         root.addView(panel, lp);
+        menuSound(NavSounds.OPEN);
         openMenu = panel;
         menuAnchor = anchor;
 
@@ -1897,6 +2058,10 @@ public class MainActivity extends Activity implements AppAdapter.TileListener {
         View panel = openMenu;
         if (panel == null) return;
         openMenu = null;
+        // The Sound menu may have loaded another pack to preview it: back to the chosen one.
+        if (menuAnchor != null && menuAnchor.getId() == R.id.btnSound) sounds.restore();
+        // Picking a row closes the menu too, but that plays the row's confirm sound instead.
+        if (toAnchor) menuSound(NavSounds.CLOSE);
         if (toAnchor && menuAnchor != null) menuAnchor.requestFocus();
         menuAnchor = null;
         panel.animate().alpha(0f).setDuration(reducedMotion ? 80 : 150).withEndAction(() -> {
